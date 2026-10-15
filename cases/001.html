@@ -26,13 +26,17 @@ function mountAiChat(){
   if(!card)continue;
   const section=document.createElement('section');section.className='ai-chat';
   const title=document.createElement('h4');title.textContent='🤖 Свободный ИИ-допрос: '+p.name;
-  const hint=document.createElement('p');hint.className='muted';hint.textContent='Задавай собственные вопросы. Нужен вход в аккаунт. Общий лимит — 40 ИИ-вопросов в сутки на всех свидетелей.';
+  const hint=document.createElement('p');hint.className='muted';hint.textContent='Задавай вопросы и выбирай найденную улику для предъявления. Нужен вход в аккаунт. Общий лимит — 40 ИИ-вопросов в сутки на всех свидетелей.';
   const log=document.createElement('div');log.className='ai-dialog';log.setAttribute('aria-live','polite');
   const counter=document.createElement('div');counter.className='muted';counter.textContent=aiRemaining===null?'Лимит: 40 вопросов в сутки':`Осталось вопросов сегодня: ${aiRemaining} из 40`;
-  const field=document.createElement('textarea');field.maxLength=500;field.rows=2;field.placeholder='Например: '+p.name.split(' ')[0]+', что вы видели в тот вечер?';
+  const evidenceLabel=document.createElement('label');evidenceLabel.className='muted';evidenceLabel.textContent='Предъявить улику (необязательно)';
+   const evidenceSelect=document.createElement('select');
+   evidenceSelect.innerHTML='<option value="">Без предъявления улики</option>';
+   for(const id of state.found){if(evidence[id]){const opt=document.createElement('option');opt.value=id;opt.textContent=evidence[id][0];evidenceSelect.appendChild(opt)}}
+   const field=document.createElement('textarea');field.maxLength=500;field.rows=2;field.placeholder='Например: '+p.name.split(' ')[0]+', что вы видели в тот вечер?';
   const send=document.createElement('button');send.type='button';send.textContent='Спросить '+(aiNames[p.id]||p.name);send.disabled=aiBusy;
   const error=document.createElement('div');error.className='muted';error.setAttribute('role','status');
-  section.append(title,hint,log,counter,field,send,error);card.appendChild(section);
+  section.append(title,hint,log,counter,evidenceLabel,evidenceSelect,field,send,error);card.appendChild(section);
   for(const m of aiMessages[p.id]||[]){const row=document.createElement('p');const who=document.createElement('strong');who.textContent=m.who+': ';row.append(who,document.createTextNode(m.text));log.appendChild(row)}
   send.onclick=async()=>{
    const question=field.value.trim();if(aiBusy)return;
@@ -42,11 +46,18 @@ function mountAiChat(){
    try{
     const {data:{session},error:authError}=await aiDb.auth.getSession();
     if(authError||!session?.access_token){error.textContent='Сначала войди в аккаунт на главной странице DetectiveAI и открой дело снова.';return}
-    const response=await fetch(aiEndpoint,{method:'POST',headers:{'Content-Type':'application/json','apikey':aiPublishableKey,'Authorization':'Bearer '+session.access_token},body:JSON.stringify({characterId:'001-'+p.id,message:question})});
+    const selectedEvidence=evidenceSelect.value;
+     if(selectedEvidence&&!state.found.includes(selectedEvidence)){error.textContent='Эта улика ещё не найдена.';return}
+     // Обновляем облачный прогресс до допроса: сервер сверяет предъявление с ним.
+     if(selectedEvidence){
+       const {error:syncError}=await aiDb.from('detective_progress').upsert({user_id:session.user.id,case_id:'001',state,updated_at:new Date().toISOString()},{onConflict:'user_id,case_id'});
+       if(syncError){error.textContent='Не удалось подтвердить улику в облаке. Проверь сохранение прогресса.';return}
+     }
+     const response=await fetch(aiEndpoint,{method:'POST',headers:{'Content-Type':'application/json','apikey':aiPublishableKey,'Authorization':'Bearer '+session.access_token},body:JSON.stringify({characterId:'001-'+p.id,message:question,evidenceId:selectedEvidence||null})});
     const result=await response.json().catch(()=>({}));
     if(!response.ok){error.textContent=response.status===429?'Лимит вопросов на сегодня исчерпан. Возвращайся завтра.':response.status===401?'Сессия истекла. Войди в аккаунт ещё раз.':(result.error||`Ошибка сервера (${response.status}).`);return}
     if(typeof result.answer!=='string'||!result.answer.trim()){error.textContent='Сервер не вернул ответ. Попробуй позже.';return}
-    (aiMessages[p.id]??=[]).push({who:'Ты',text:question},{who:aiNames[p.id]||p.name,text:result.answer});
+    (aiMessages[p.id]??=[]).push({who:'Ты',text:question+(selectedEvidence?' [Улика: '+evidence[selectedEvidence][0]+']':'')},{who:aiNames[p.id]||p.name,text:result.answer});
     if(Number.isInteger(result.remaining))aiRemaining=result.remaining;
     field.value='';error.textContent='';mountAiChatRefresh();
    }catch(e){error.textContent='Не удалось связаться с ИИ. Проверь интернет или настройки функции.'}
