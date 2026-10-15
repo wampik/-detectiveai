@@ -15,4 +15,26 @@ if(state.tab==='final'){if(state.finished){const good=state.verdict?.correct;h=`
 $('view').innerHTML=h}
 function submitVerdict(){if(state.linked.length<3){alert('Сначала докажи минимум три противоречия на вкладке «Связи».');return}const who=$('who').value,why=$('why').value,how=$('how').value,proof=$('proof').value;if(!who||!why||!how||!proof){alert('Заполни все поля отчёта.');return}state.verdict={who,why,how,proof,correct:who==='marina'&&why==='painting'&&how==='service'&&proof==='keylog'};state.finished=true;save();render()}
 function review(){state.finished=false;save();render()}function restart(){if(confirm('Начать расследование заново? Весь прогресс будет удалён.')){state=initial();save();render()}}render();
+</script><style id="detective-tools-style">
+#detective-tools{position:fixed;right:12px;bottom:14px;z-index:900;display:flex;gap:8px;align-items:center}#detective-tools button{background:#e7bd79!important;color:#142035!important;border:1px solid #d6a95d!important;border-radius:25px!important;padding:11px 14px!important;box-shadow:0 4px 20px #0009!important;font-size:14px!important;font-weight:800!important}#detective-overlay{position:fixed;inset:0;z-index:1000;background:#050c16ba;display:none;align-items:flex-end;justify-content:center}#detective-overlay.open{display:flex}#detective-sheet{width:min(100%,650px);max-height:88dvh;overflow:auto;background:#132238;color:#edf3ff;border:1px solid #65738c;border-radius:18px 18px 0 0;padding:20px;box-shadow:0 0 40px #000a;font:15px/1.5 system-ui,sans-serif}#detective-sheet h2{font-size:22px;margin:0 0 12px;color:#f3c783}#detective-sheet p{color:#c7d2e3}#detective-sheet textarea{display:block;width:100%;min-height:210px;padding:12px;color:white;background:#0a1525;border:1px solid #667891;border-radius:10px;font:16px/1.5 system-ui,sans-serif;resize:vertical}#detective-sheet select{width:100%;padding:12px;background:#0a1525;color:white;border:1px solid #667891;border-radius:9px;font-size:16px}#detective-sheet button{margin:8px 6px 8px 0;padding:10px 13px;border-radius:10px;background:#d8ad69;color:#142035;font-weight:700}#detective-sheet .subtext{font-size:13px;color:#aab9d0}#detective-sheet .tools-row{display:flex;justify-content:space-between;align-items:center;gap:12px}#detective-tools-note{font-size:12px;color:#b9edc7;min-height:18px}body{padding-bottom:64px}
+</style><script id="detective-tools-script">
+(function(){
+const ui=document.createElement('div');ui.innerHTML=`<div id="detective-tools"><button id="open-detective-notes" type="button">📝 Блокнот</button></div><div id="detective-overlay" role="dialog" aria-modal="true" aria-label="Инструменты детектива"><div id="detective-sheet"><div class="tools-row"><h2 id="detective-sheet-title">Блокнот детектива</h2><button id="close-detective-tools" type="button">✕</button></div><div id="detective-sheet-content"></div></div></div>`;
+document.body.appendChild(ui);const $t=id=>document.getElementById(id);
+const overlay=$t('detective-overlay'),content=$t('detective-sheet-content');
+function persistNotes(){const area=$t('detective-quick-notes');if(!area)return;state.notes=area.value;save();const msg=$t('detective-tools-note');if(msg)msg.textContent='✓ Автоматически сохранено';}
+let noteTimer;
+function showNotes(){
+ $t('detective-sheet-title').textContent='📝 Блокнот детектива';
+ content.innerHTML=`<p>Записывай версии, алиби, время событий и подозрения. Блокнот доступен во время осмотра, допросов и в самом деле.</p><textarea id="detective-quick-notes" placeholder="Моя версия...\nПодозреваемые...\nЧто нужно проверить..."></textarea><div id="detective-tools-note" aria-live="polite">Заметки сохраняются автоматически</div><div class="tools-row"><button type="button" id="detective-save-notes">Сохранить</button><button type="button" id="detective-guide">💡 Направление поиска</button></div><div id="detective-guide-text" class="subtext"></div>`;
+ $t('detective-quick-notes').value=state.notes||'';
+ $t('detective-quick-notes').addEventListener('input',()=>{clearTimeout(noteTimer);noteTimer=setTimeout(persistNotes,300)});
+ $t('detective-save-notes').onclick=persistNotes;
+ $t('detective-guide').onclick=()=>{const e=$t('detective-guide-text');const found=state.found?.length||0;const asked=Array.isArray(state.asked)?state.asked.length:Object.values(state.asked||{}).flat().length;e.textContent=found<3?'Начни с осмотра нескольких помещений. Обращай внимание на время и доступ к закрытым зонам.':asked<2?'Улик уже достаточно для первых вопросов. Сопоставь показания свидетелей с найденными предметами.':'Проверь противоречия на вкладке «Связи», а затем собери аргументы для вердикта.';};
+ overlay.classList.add('open');$t('detective-quick-notes').focus();
+}
+$t('open-detective-notes').onclick=showNotes;$t('close-detective-tools').onclick=()=>{persistNotes();overlay.classList.remove('open')};overlay.addEventListener('click',e=>{if(e.target===overlay){persistNotes();overlay.classList.remove('open')}});
+
+
+})();
 </script></body></html>
