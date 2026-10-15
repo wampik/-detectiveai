@@ -18,37 +18,43 @@ const aiEndpoint='https://duuznleluyyzxalzkrzg.supabase.co/functions/v1/detectiv
 const aiPublishableKey='sb_publishable_KJucuAOqGqC9Hyh2adbUww_yWlD0vyA';
 const aiDb=window.supabase?.createClient('https://duuznleluyyzxalzkrzg.supabase.co',aiPublishableKey)||null;
 let aiBusy=false,aiRemaining=null;
-const aiMessages=[];
+const aiMessages={};
+const aiNames={irina:'Ирина',pavel:'Павел',lena:'Елена',maxim:'Максим',nikita:'Никита'};
 function mountAiChat(){
- const irina=[...document.querySelectorAll('#view .card')].find(card=>card.querySelector('h3')?.textContent==='Ирина Белова');
- if(!irina)return;
- const section=document.createElement('section');section.className='ai-chat';
- section.innerHTML=`<h4>🤖 Свободный допрос Ирины (ИИ)</h4><p class="muted">Задай свой вопрос. Для ИИ-допроса нужен вход в аккаунт на главной странице. До 40 вопросов в сутки.</p><div id="ai-dialog" class="ai-dialog" aria-live="polite"></div><div id="ai-counter" class="muted"></div><textarea id="ai-question" maxlength="500" rows="2" placeholder="Например: Ирина, почему вы не рассказали о договоре?"></textarea><button type="button" id="ai-send">Спросить Ирину</button><div id="ai-error" class="muted" role="status"></div>`;
- irina.appendChild(section);
- const log=section.querySelector('#ai-dialog');
- for(const m of aiMessages){const row=document.createElement('p');const who=document.createElement('strong');who.textContent=m.who+': ';row.appendChild(who);row.appendChild(document.createTextNode(m.text));log.appendChild(row)}
- section.querySelector('#ai-counter').textContent=aiRemaining===null?'Лимит: 40 вопросов в сутки':`Осталось вопросов сегодня: ${aiRemaining} из 40`;
- const send=section.querySelector('#ai-send'),field=section.querySelector('#ai-question'),error=section.querySelector('#ai-error');
- send.disabled=aiBusy;
- send.onclick=async()=>{
-  const question=field.value.trim();if(aiBusy)return;if(!question||question.length>500){error.textContent='Введи вопрос длиной до 500 символов.';return}
-  if(!aiDb){error.textContent='Не удалось загрузить авторизацию. Проверь подключение к интернету.';return}
-  aiBusy=true;send.disabled=true;error.textContent='Ирина обдумывает ответ…';
-  try{
-   const {data:{session},error:authError}=await aiDb.auth.getSession();
-   if(authError||!session?.access_token){error.textContent='Сначала войди в аккаунт на главной странице DetectiveAI, затем открой дело снова.';return}
-   const response=await fetch(aiEndpoint,{method:'POST',headers:{'Content-Type':'application/json','apikey':aiPublishableKey,'Authorization':'Bearer '+session.access_token},body:JSON.stringify({characterId:'001-irina',message:question})});
-   const result=await response.json().catch(()=>({}));
-   if(!response.ok){error.textContent=response.status===429?'Лимит вопросов на сегодня исчерпан. Возвращайся завтра.':response.status===401?'Сессия истекла. Войди в аккаунт ещё раз.':(result.error||`Ошибка сервера (${response.status}).`);return}
-   if(typeof result.answer!=='string'||!result.answer.trim()){error.textContent='Сервер не вернул ответ. Попробуй позже.';return}
-   aiMessages.push({who:'Ты',text:question},{who:'Ирина',text:result.answer});
-   if(Number.isInteger(result.remaining))aiRemaining=result.remaining;
-   field.value='';error.textContent='';mountAiChatRefresh();
-  }catch(e){error.textContent='Не удалось связаться с ИИ. Проверь интернет или настройки функции.'}
-  finally{aiBusy=false;const button=document.getElementById('ai-send');if(button)button.disabled=false}
- };
+ for(const p of people){
+  const card=[...document.querySelectorAll('#view .card')].find(c=>c.querySelector('h3')?.textContent===p.name);
+  if(!card)continue;
+  const section=document.createElement('section');section.className='ai-chat';
+  const title=document.createElement('h4');title.textContent='🤖 Свободный ИИ-допрос: '+p.name;
+  const hint=document.createElement('p');hint.className='muted';hint.textContent='Задавай собственные вопросы. Нужен вход в аккаунт. Общий лимит — 40 ИИ-вопросов в сутки на всех свидетелей.';
+  const log=document.createElement('div');log.className='ai-dialog';log.setAttribute('aria-live','polite');
+  const counter=document.createElement('div');counter.className='muted';counter.textContent=aiRemaining===null?'Лимит: 40 вопросов в сутки':`Осталось вопросов сегодня: ${aiRemaining} из 40`;
+  const field=document.createElement('textarea');field.maxLength=500;field.rows=2;field.placeholder='Например: '+p.name.split(' ')[0]+', что вы видели в тот вечер?';
+  const send=document.createElement('button');send.type='button';send.textContent='Спросить '+(aiNames[p.id]||p.name);send.disabled=aiBusy;
+  const error=document.createElement('div');error.className='muted';error.setAttribute('role','status');
+  section.append(title,hint,log,counter,field,send,error);card.appendChild(section);
+  for(const m of aiMessages[p.id]||[]){const row=document.createElement('p');const who=document.createElement('strong');who.textContent=m.who+': ';row.append(who,document.createTextNode(m.text));log.appendChild(row)}
+  send.onclick=async()=>{
+   const question=field.value.trim();if(aiBusy)return;
+   if(!question||question.length>500){error.textContent='Введи вопрос длиной до 500 символов.';return}
+   if(!aiDb){error.textContent='Не удалось загрузить авторизацию. Проверь интернет.';return}
+   aiBusy=true;document.querySelectorAll('.ai-chat button').forEach(b=>b.disabled=true);error.textContent='Свидетель обдумывает ответ…';
+   try{
+    const {data:{session},error:authError}=await aiDb.auth.getSession();
+    if(authError||!session?.access_token){error.textContent='Сначала войди в аккаунт на главной странице DetectiveAI и открой дело снова.';return}
+    const response=await fetch(aiEndpoint,{method:'POST',headers:{'Content-Type':'application/json','apikey':aiPublishableKey,'Authorization':'Bearer '+session.access_token},body:JSON.stringify({characterId:'001-'+p.id,message:question})});
+    const result=await response.json().catch(()=>({}));
+    if(!response.ok){error.textContent=response.status===429?'Лимит вопросов на сегодня исчерпан. Возвращайся завтра.':response.status===401?'Сессия истекла. Войди в аккаунт ещё раз.':(result.error||`Ошибка сервера (${response.status}).`);return}
+    if(typeof result.answer!=='string'||!result.answer.trim()){error.textContent='Сервер не вернул ответ. Попробуй позже.';return}
+    (aiMessages[p.id]??=[]).push({who:'Ты',text:question},{who:aiNames[p.id]||p.name,text:result.answer});
+    if(Number.isInteger(result.remaining))aiRemaining=result.remaining;
+    field.value='';error.textContent='';mountAiChatRefresh();
+   }catch(e){error.textContent='Не удалось связаться с ИИ. Проверь интернет или настройки функции.'}
+   finally{aiBusy=false;document.querySelectorAll('.ai-chat button').forEach(b=>b.disabled=false)}
+  };
+ }
 }
-function mountAiChatRefresh(){if(state.tab!=='people')return;render();const log=document.getElementById('ai-dialog');if(log)log.scrollTop=log.scrollHeight}
+function mountAiChatRefresh(){if(state.tab!=='people')return;render();for(const log of document.querySelectorAll('.ai-dialog'))log.scrollTop=log.scrollHeight}
 
 render();
 </script><style id="detective-tools-style">
